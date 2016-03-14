@@ -14,10 +14,10 @@ var w = 1500,
     h = 900;
 
 vis.attr("width", w).attr("height", h);
-d3.json("/static/force2.json", function(json) {
+d3.json("/static/uniform_cost.json", function(json) {
     var force = d3.layout.force()
-        .charge(-100)
-        .linkDistance(50)
+        //.charge(-100)
+        //.linkDistance(50)
         .nodes(json.nodes)
         .links(json.links)
         .size([w, h])
