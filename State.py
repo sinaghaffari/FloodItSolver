@@ -1,9 +1,12 @@
+import json
 import uuid
 
 import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplc
+from networkx.readwrite import json_graph
 from numpy import random, array
+import random as rand
 
 __author__ = 'sina'
 
@@ -17,8 +20,10 @@ colord = {
 }
 
 
-class State:
-    def __init__(self, width, height, num_colors, last_move, num_moves=0, initial_values=None, initial_graph=None):
+class _State:
+    def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, initial_values=None,
+                 initial_graph=None):
+        self.parent = parent
         self.last_move = last_move
         self.num_moves = num_moves
         self.width = width
@@ -26,8 +31,6 @@ class State:
         self.num_colors = num_colors
         if initial_values is None and initial_graph is None:
             self.values = random.randint(num_colors, size=(height, width))
-            # print "Initial Values:"
-            # print self.values
             self.graph, self.graph_map = self.create_graph(self.values)
         elif initial_values is None and initial_graph is not None:
             self.graph = initial_graph
@@ -35,12 +38,8 @@ class State:
         elif initial_values is not None and initial_graph is None:
             self.values = initial_values
             self.graph, self.graph_map = self.create_graph(self.values)
-        self.moves = 0
-        self._id = hash(frozenset(self.graph.node[self.graph_map[0][0]]['blocks'] + [self.moves]))
-        self._hscore = None
-
-        # d = json_graph.node_link_data(self.graph)
-        # json.dump(d, open('static/force.json', 'w'))
+        self.id = hash(frozenset(self.graph.node[self.graph_map[0][0]]['blocks']))
+        self.estimated_moves_to_goal = None
 
     def create_grid(self, graph):
         values = array([[0] * self.width] * self.height)
@@ -120,7 +119,11 @@ class State:
             new_graph.add_edge(self.head_node(), child)
         new_graph.node[self.head_node()]['color'] = move
         new_graph.node[self.head_node()]['blocks'].extend(frozenset(gained_blocks))
-        return State(self.width, self.height, self.num_colors, move, self.num_moves + 1, initial_graph=new_graph)
+        return self.__class__(self.width, self.height, self.num_colors, last_move=move, parent=self,
+                              num_moves=self.num_moves + 1, initial_graph=new_graph)
+
+    def is_goal(self):
+        return self.graph.number_of_nodes() == 1
 
     def valid_actions(self):
         return set(self.graph.node[x]['color'] for x in self.graph.neighbors(self.head_node()))
@@ -133,27 +136,44 @@ class State:
     def head_node(self):
         return self.graph_map[0][0]
 
-    def hscore(self):
-        if self._hscore is None:
-            self._hscore = \
-            max(nx.single_source_shortest_path_length(self.graph, self.head_node()).items(), key=lambda x: x[1])[1]
-        return self._hscore
+    def h_score(self):
+        if self.estimated_moves_to_goal is None:
+            self.estimated_moves_to_goal = \
+                max(nx.single_source_shortest_path_length(self.graph, self.head_node()).items(), key=lambda x: x[1])[1]
+        return self.estimated_moves_to_goal
 
-    def fscore(self):
-        return self.num_moves + self.hscore()
+    def g_score(self):
+        return self.num_moves
+
+    def f_score(self):
+        return self.g_score() + self.h_score()
 
     def __hash__(self):
-        return self._id
+        return self.id
 
     def __eq__(self, other):
-        return type(other) is State and self._id == other._id
+        return hash(self) == hash(other)
 
     def __cmp__(self, other):
-        f1 = self.fscore()
-        f2 = other.fscore()
+        f1 = self.f_score()
+        f2 = other.f_score()
         if f1 < f2:
             return -1
         elif f1 == f2:
             return 0
         else:
             return 1
+
+
+class State(_State):
+    def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, initial_values=None,
+                 initial_graph=None):
+        _State.__init__(self, width, height, num_colors, last_move, parent, num_moves, initial_values, initial_graph)
+        self.id = hash(frozenset(self.graph.node[self.graph_map[0][0]]['blocks']))
+
+
+class ReduntantCheckingState(_State):
+    def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, initial_values=None,
+                 initial_graph=None):
+        _State.__init__(self, width, height, num_colors, last_move, parent, num_moves, initial_values, initial_graph)
+        self.id = rand.getrandbits(64)

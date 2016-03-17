@@ -16,8 +16,8 @@ var w = 1500,
 vis.attr("width", w).attr("height", h);
 d3.json("/static/force.json", function(json) {
     var force = d3.layout.force()
-        //.charge(-150)
-        //.linkDistance(100)
+        //.charge(-300)
+        //.linkDistance(200)
         .nodes(json.nodes)
         .links(json.links)
         .size([w, h])
@@ -42,9 +42,9 @@ d3.json("/static/force.json", function(json) {
         .style("fill", function(d) {return colord[d['color']]});
 
     node.append("text")
-        .attr("dx", 12)
+        .attr("dx", "-.35em")
         .attr("dy", ".35em")
-        .text(function(d) {if (d['root']) return "ROOT"; else return "";});
+        .text(function(d) {if (d['root']) return "U"; else return "";});
 
     vis.style("opacity", 1e-6)
         .transition()

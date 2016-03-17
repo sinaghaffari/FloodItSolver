@@ -16,8 +16,8 @@ var w = 1500,
 vis.attr("width", w).attr("height", h);
 d3.json("/static/uniform_cost.json", function(json) {
     var force = d3.layout.force()
-        //.charge(-100)
-        //.linkDistance(50)
+        .charge(-50)
+        .linkDistance(50)
         .nodes(json.nodes)
         .links(json.links)
         .size([w, h])
@@ -45,10 +45,9 @@ d3.json("/static/uniform_cost.json", function(json) {
         .enter()
         .append("g")
         .attr("class", "node")
-
         .call(force.drag);
 
-    node.append("svg:circle")
+    var nodeBody = node.append("svg:circle")
         .attr("r", function(d) {if (d['start']) return 10; else return 5})
         .style("fill", function(d) {if (d['status'] == "open") return "red"; else if (d['start']) return "green"; else return "blue"});
 
