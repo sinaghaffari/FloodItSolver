@@ -5,8 +5,9 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.colors as mplc
 from networkx.readwrite import json_graph
-from numpy import random, array
+import numpy as py
 import random as rand
+from copy import deepcopy
 
 __author__ = 'sina'
 
@@ -21,8 +22,8 @@ colord = {
 
 
 class _State:
-    def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, initial_values=None,
-                 initial_graph=None):
+    def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, head_node=None,
+                 initial_values=None, initial_graph=None):
         self.parent = parent
         self.last_move = last_move
         self.num_moves = num_moves
@@ -30,35 +31,33 @@ class _State:
         self.height = height
         self.num_colors = num_colors
         if initial_values is None and initial_graph is None:
-            self.values = random.randint(num_colors, size=(height, width))
-            self.graph, self.graph_map = self.create_graph(self.values)
+            self.graph, self.head_node = self.create_graph(py.random.randint(num_colors, size=(height, width)))
         elif initial_values is None and initial_graph is not None:
             self.graph = initial_graph
-            self.values, self.graph_map = self.create_grid(self.graph)
+            self.head_node = head_node
         elif initial_values is not None and initial_graph is None:
-            self.values = initial_values
-            self.graph, self.graph_map = self.create_graph(self.values)
-        self.id = hash(frozenset(self.graph.node[self.graph_map[0][0]]['blocks']))
+            self.graph, self.head_node = self.create_graph(initial_values)
+        self.id = hash(self.graph.node[self.head_node]['blocks'])
         self.estimated_moves_to_goal = None
 
     def create_grid(self, graph):
-        values = array([[0] * self.width] * self.height)
-        graph_map = array([[''] * self.width] * self.height, dtype=object)
+        values = py.array([[0] * self.width] * self.height)
+        graph_map = py.array([[''] * self.width] * self.height, dtype=object)
         for node in graph.nodes(data=True):
             for block in node[1]['blocks']:
                 x = block // self.width
                 y = block % self.width
                 values[x][y] = node[1]['color']
                 graph_map[x][y] = node[0]
-        return array(values), graph_map
+        return values
 
     def create_graph(self, values):
-        color_map = array([[''] * self.width] * self.height, dtype=object)
+        color_map = py.array([[''] * self.width] * self.height, dtype=object)
         graph = nx.Graph()
 
         def flood_fill(x, y, value):
             initial_value = values[y][x]
-            attr_dict = {'blocks': [], 'color': initial_value}
+            attr_dict = {'blocks': frozenset(), 'color': initial_value}
             if x == 0 and y == 0:
                 attr_dict['root'] = True
             graph.add_node(value, attr_dict=attr_dict)
@@ -68,7 +67,8 @@ class _State:
                 current = queue.pop()
                 visited.append(current)
                 color_map[current[0]][current[1]] = value
-                graph.node[value]['blocks'].append(current[0] * self.width + current[1])
+                graph.node[value]['blocks'] = graph.node[value]['blocks'].union(
+                    frozenset([current[0] * self.width + current[1]]))
                 if current[0] + 1 < self.height and (current[0] + 1, current[1]) not in queue:
                     if values[current[0] + 1][current[1]] == initial_value:
                         if (current[0] + 1, current[1]) not in visited:
@@ -98,48 +98,60 @@ class _State:
                         if color_map[current[0]][current[1] - 1] != '':
                             graph.add_edge(value, color_map[current[0]][current[1] - 1])
 
+        count = 0
         for i in range(len(values)):
             for j in range(len(values[i])):
                 if color_map[i][j] == '':
-                    flood_fill(j, i, str(uuid.uuid4()))
-        return graph, color_map
+                    flood_fill(j, i, count)
+                    count += 1
+        return graph, color_map[0][0]
 
     def successors(self):
         return [self.do_move(x) for x in self.valid_actions()]
 
     def do_move(self, move):
-        new_graph = self.graph.copy()
-        affected_children = filter(lambda x: new_graph.node[x]['color'] == move, new_graph.neighbors(self.head_node()))
-        gained_blocks = [block for child in affected_children for block in new_graph.node[child]['blocks']]
+        new_graph = nx.Graph()
+        new_graph.add_nodes_from(self.graph.nodes(data=True))
+        new_graph.add_edges_from(self.graph.edges())
+
+        affected_children = filter(lambda x: new_graph.node[x]['color'] == move, new_graph.neighbors(self.head_node))
+        gained_blocks = frozenset(block for child in affected_children for block in new_graph.node[child]['blocks'])
         inherited_children = set(y for x in affected_children for y in new_graph.neighbors(x))
-        inherited_children.remove(self.head_node())
+        inherited_children.remove(self.head_node)
 
         new_graph.remove_nodes_from(affected_children)
         for child in inherited_children:
-            new_graph.add_edge(self.head_node(), child)
-        new_graph.node[self.head_node()]['color'] = move
-        new_graph.node[self.head_node()]['blocks'].extend(frozenset(gained_blocks))
+            new_graph.add_edge(self.head_node, child)
+        new_graph.node[self.head_node]['color'] = move
+        new_graph.node[self.head_node]['blocks'] = gained_blocks.union(new_graph.node[self.head_node]['blocks'])
         return self.__class__(self.width, self.height, self.num_colors, last_move=move, parent=self,
-                              num_moves=self.num_moves + 1, initial_graph=new_graph)
+                              num_moves=self.num_moves + 1, head_node=self.head_node, initial_graph=new_graph)
 
     def is_goal(self):
         return self.graph.number_of_nodes() == 1
 
     def valid_actions(self):
-        return set(self.graph.node[x]['color'] for x in self.graph.neighbors(self.head_node()))
+        return set(self.graph.node[x]['color'] for x in self.graph.neighbors(self.head_node))
 
     def draw_graph(self):
-        plt.imshow(array(map(lambda x: map(lambda y: mplc.colorConverter.to_rgb(colord[y]), x), self.values)),
+        plt.imshow(py.array(
+            map(lambda x: map(lambda y: mplc.colorConverter.to_rgb(colord[y]), x), self.create_grid(self.graph))),
                    interpolation='nearest')
         plt.show()
 
-    def head_node(self):
-        return self.graph_map[0][0]
+    def write_graph_to_file(self, path):
+        graph = nx.Graph()
+        for node in self.graph.nodes(data=True):
+            new_node = deepcopy(node)
+            new_node[1]['blocks'] = list(new_node[1]['blocks'])
+            graph.add_node(*new_node)
+        graph.add_edges_from(self.graph.edges())
+        json.dump(json_graph.node_link_data(graph), open(path, 'w'))
 
     def h_score(self):
         if self.estimated_moves_to_goal is None:
             self.estimated_moves_to_goal = \
-                max(nx.single_source_shortest_path_length(self.graph, self.head_node()).items(), key=lambda x: x[1])[1]
+                max(nx.single_source_shortest_path_length(self.graph, self.head_node).items(), key=lambda x: x[1])[1]
         return self.estimated_moves_to_goal
 
     def g_score(self):
@@ -165,15 +177,18 @@ class _State:
             return 1
 
 
+class RedundantCheckingState(_State):
+    def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, head_node=None,
+                 initial_values=None, initial_graph=None):
+        _State.__init__(self, width, height, num_colors, last_move, parent, num_moves, head_node, initial_values,
+                        initial_graph)
+        self.id = hash(self.graph.node[self.head_node]['blocks'])
+
+
 class State(_State):
-    def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, initial_values=None,
+    def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, head_node=None,
+                 initial_values=None,
                  initial_graph=None):
-        _State.__init__(self, width, height, num_colors, last_move, parent, num_moves, initial_values, initial_graph)
-        self.id = hash(frozenset(self.graph.node[self.graph_map[0][0]]['blocks']))
-
-
-class ReduntantCheckingState(_State):
-    def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, initial_values=None,
-                 initial_graph=None):
-        _State.__init__(self, width, height, num_colors, last_move, parent, num_moves, initial_values, initial_graph)
+        _State.__init__(self, width, height, num_colors, last_move, parent, num_moves, head_node, initial_values,
+                        initial_graph)
         self.id = rand.getrandbits(64)

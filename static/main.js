@@ -8,7 +8,8 @@ var colord = {
     3: '#ffff00',
     4: '#ff00ff',
     5: '#00ffff'
-}
+};
+
 var vis = d3.select("#graph").append("svg");
 var w = 1500,
     h = 900;
@@ -16,8 +17,8 @@ var w = 1500,
 vis.attr("width", w).attr("height", h);
 d3.json("/static/force.json", function(json) {
     var force = d3.layout.force()
-        //.charge(-300)
-        //.linkDistance(200)
+        .charge(function() {return -400/(json.nodes.length * 0.05)})
+        .linkDistance(function() {return 100/(json.nodes.length * 0.05)})
         .nodes(json.nodes)
         .links(json.links)
         .size([w, h])
