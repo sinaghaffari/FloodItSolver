@@ -12,7 +12,13 @@ from State import State, RedundantCheckingState
 
 
 def uniform_cost(initial_state):
-    start_time = time.time()
+    """
+    An implementation of Uniform Cost Search.
+    Very similar to our implementation A* search, but it makes some slight optimizations compared to running A* with a
+    heuristic function that always returns 1.
+    :param initial_state: The state to start the search on.
+    :return: See `resultify`
+    """
     closed_set = set()
     open_set = [initial_state]
     search_graph = nx.Graph()
@@ -23,10 +29,6 @@ def uniform_cost(initial_state):
         closed_set.add(current)
         search_graph.node[hash(current)]['status'] = 'closed'
         if current.is_goal():
-            # print "Uniform Cost:"
-            # print "\tNodes searched =", len(closed_set)
-            # print "\tNodes to be searched =", len(open_set)
-            # print "\tTime Taken =", (time.time() - start_time)
             return resultify(current, search_graph)
         for successor in current.successors():
             if successor not in closed_set:
@@ -43,17 +45,24 @@ def uniform_cost(initial_state):
 
 
 def greedy_search(initial_state):
-    start_time = time.time()
+    """
+    A simple non-optimal Greedy search. It runs very quickly and produces nearly optimal results on a random grid.
+    There are certain grids, however that this algorithm does not work with.
+    :param initial_state: The state to start the search on.
+    :return: See `resultify`
+    """
     current = initial_state
     while not current.is_goal():
         current = max(current.successors(), key=lambda x: len(x.graph.node[x.head_node]['blocks']))
-    print "Greedy:"
-    print "\tTime Taken =", (time.time() - start_time)
     return resultify(current)
 
 
 def a_star(initial_state):
-    start_time = time.time()
+    """
+    An implementation of the A* Search Algorithm.
+    :param initial_state: The state to start the search on.
+    :return: See `resultify`.
+    """
     closed_set = set()
     open_set = SortedDict()
     open_set[initial_state] = initial_state
@@ -64,10 +73,6 @@ def a_star(initial_state):
         closed_set.add(current)
         search_graph.node[hash(current)]['status'] = 'closed'
         if current.is_goal():
-            # print "A*:"
-            # print "\tNodes searched =", len(closed_set)
-            # print "\tNodes to be searched =", len(open_set)
-            # print "\tTime Taken =", (time.time() - start_time)
             return resultify(current, search_graph)
 
         for successor in current.successors():
@@ -84,6 +89,14 @@ def a_star(initial_state):
 
 
 def iterative_deepening_a_star(initial_state):
+    """
+    An incomplete Iterative Deepening A* Search. The current issue is that it does not return the optimal sequence of
+    moves, just the number of moves that it needed to solve the puzzle. We did not put more effort into this because the
+    increased memory efficiency was outweighed by the slow performance.
+    :param initial_state: The starting state to do the search on.
+    :return: The number of moves it took to get from the initial_state to a goal_state.
+    """
+
     def search(node, g, bound):
         f = g + node.h_score()
         if f > bound:
@@ -110,6 +123,12 @@ def iterative_deepening_a_star(initial_state):
 
 
 def resultify(final_state, graph=nx.Graph()):
+    """
+    Steps backwards through the final state of a search and accumulates usable results.
+    :param final_state: The goal state that the search found.
+    :param graph: An optional parameter for the search graph created in the search.
+    :return: The number of moves required to complete the search, Each state in the order they happened, the search graph, a heat map representing the number of moves it took to consume each block in the initial grid representation.
+    """
     total_path = [final_state]
     while final_state.parent is not None:
         final_state = final_state.parent
@@ -128,74 +147,13 @@ def resultify(final_state, graph=nx.Graph()):
 
 
 def write_graph_to_file(graph, path):
+    """
+    Writes a give graph as a json file to the given path.
+    :param graph: The graph to write to the file.
+    :param path: The location to write the file to.
+    """
     json.dump(json_graph.node_link_data(graph), open(path, 'w'))
 
 
-# n = 10  # widths
-# m = 10  # height
-# c = 3  # number of colors]
-# py.random.seed(0)
-# # initial state
-# t = py.random.randint(c, size=(m, n))
-# t = py.array([[0, 0, 2, 0, 2, 0, 3, 0, 1, 3],
-#               [1, 1, 2, 2, 2, 1, 2, 2, 1, 2],
-#               [3, 2, 2, 0, 2, 2, 0, 0, 0, 2],
-#               [2, 0, 0, 3, 1, 1, 0, 1, 2, 0],
-#               [2, 0, 3, 0, 3, 3, 1, 3, 0, 1],
-#               [3, 2, 2, 3, 2, 0, 2, 0, 1, 1],
-#               [3, 3, 0, 0, 2, 0, 3, 1, 1, 3],
-#               [1, 3, 0, 1, 1, 1, 2, 3, 0, 0],
-#               [0, 1, 3, 1, 1, 2, 1, 2, 2, 3],
-#               [0, 0, 1, 0, 0, 1, 0, 2, 3, 3]])
-# t = py.array([[0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-#               [0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-#               [3, 2, 2, 2, 2, 2, 2, 2, 2, 2],
-#               [3, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-#               [3, 2, 2, 2, 2, 2, 2, 2, 2, 2],
-#               [3, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-#               [3, 2, 2, 2, 2, 2, 2, 2, 2, 2],
-#               [3, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-#               [3, 2, 2, 2, 2, 2, 2, 2, 2, 2],
-#               [3, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
-# print "Input is a {}x{} grid with {} colors.".format(n, m, c)
-# grid_string = "array(" + ",".join(",".join(string.strip().split(" ")) for string in str(t).split("\n")) + ")"
-# print grid_string
-# print "\n"
-# state = RedundantCheckingState(n, m, c, None, initial_values=t)
-# num_moves, path, ngraph, heat_map = a_star(state)
-#
-# print "A* took", len(path) - 1, "moves"
-# print t, "\n"
-# print heat_map
-# plt.imshow(heat_map, interpolation='nearest')
-
-# state.write_graph_to_file("static/force.json")
-# # state.draw_graph()
-#
-#
-#
-# ngraph, path = a_star(state)
-# ngraph.node[hash(path[-1])]['end'] = True
-# for i in range(len(path) - 1):
-#     ngraph.edge[hash(path[i])][hash(path[i + 1])]['optimal'] = True
-# write_graph_to_file(ngraph, 'static/a_star.json')
-#
-# ngraph, path = uniform_cost(state)
-# ngraph.node[hash(path[-1])]['end'] = True
-# for i in range(len(path) - 1):
-#     ngraph.edge[hash(path[i])][hash(path[i + 1])]['optimal'] = True
-# write_graph_to_file(ngraph, 'static/uniform_cost.json')
-#
-# state = TestState(n, m, c, None, initial_values=t)
-#
-# ngraph, path = a_star(state)
-# ngraph.node[hash(path[-1])]['end'] = True
-# for i in range(len(path) - 1):
-#     ngraph.edge[hash(path[i])][hash(path[i + 1])]['optimal'] = True
-# write_graph_to_file(ngraph, 'static/a_star.json')
-#
-# ngraph, path = uniform_cost(state)
-# ngraph.node[hash(path[-1])]['end'] = True
-# for i in range(len(path) - 1):
-#     ngraph.edge[hash(path[i])][hash(path[i + 1])]['optimal'] = True
-# write_graph_to_file(ngraph, 'static/uniform_cost.json')
+if __name__ == "__main__":
+    print "test"

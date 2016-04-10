@@ -18,7 +18,7 @@ vis.attr("width", w).attr("height", h);
 d3.json("/static/force.json", function(json) {
     var force = d3.layout.force()
         .charge(function() {return -400/(json.nodes.length * 0.05)})
-        .linkDistance(function() {return 100/(json.nodes.length * 0.05)})
+        .linkDistance(function() {return 10})
         .nodes(json.nodes)
         .links(json.links)
         .size([w, h])

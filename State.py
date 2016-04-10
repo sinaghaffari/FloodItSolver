@@ -9,8 +9,7 @@ import numpy as py
 import random as rand
 from copy import deepcopy
 
-__author__ = 'sina'
-
+# This maps up to integers to colors. Used to draw grids of up to 6 colors.
 colord = {
     0: '#ff0000',
     1: '#00ff00',
@@ -24,6 +23,17 @@ colord = {
 class _State:
     def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, head_node=None,
                  initial_values=None, initial_graph=None):
+        """
+        :param width: The width of the game board.
+        :param height: The height of the game board.
+        :param num_colors: The number of colors in the game board.
+        :param last_move: The move that was applied to `parent` to get the current state.
+        :param parent: The state that this state is a successor of.
+        :param num_moves: The number of moves that h ave been applied since the initial state.
+        :param head_node: The UUID of the user node within the graph representation.
+        :param initial_values: An optional grid of values to insert into the state.
+        :param initial_graph: An optional graph to insert into the state.
+        """
         self.parent = parent
         self.last_move = last_move
         self.num_moves = num_moves
@@ -40,18 +50,24 @@ class _State:
         self.id = hash(self.graph.node[self.head_node]['blocks'])
         self.estimated_moves_to_goal = None
 
-    def create_grid(self, graph):
+    def create_grid(self):
+        """
+        :param graph: The graph representation of the state.
+        :return: The grid representation of the state, given the graph representation.
+        """
         values = py.array([[0] * self.width] * self.height)
-        graph_map = py.array([[''] * self.width] * self.height, dtype=object)
-        for node in graph.nodes(data=True):
+        for node in self.graph.nodes(data=True):
             for block in node[1]['blocks']:
                 x = block // self.width
                 y = block % self.width
                 values[x][y] = node[1]['color']
-                graph_map[x][y] = node[0]
         return values
 
     def create_graph(self, values):
+        """
+        :param values: The grid representation of the state.
+        :return: The graph representation o f the state, given the grid representation.
+        """
         color_map = py.array([[''] * self.width] * self.height, dtype=object)
         graph = nx.Graph()
 
@@ -110,36 +126,62 @@ class _State:
         return [self.do_move(x) for x in self.valid_actions()]
 
     def do_move(self, move):
+        """
+        Note: Does not modify the current state.
+        :param move: The move to apply to the current state.
+        :return: The state which results from applying the given move to the current state.
+        """
+
+        # Clone the graph representation.
         new_graph = nx.Graph()
         new_graph.add_nodes_from(self.graph.nodes(data=True))
         new_graph.add_edges_from(self.graph.edges())
 
+        # Calculate the effects of the move.
         affected_children = filter(lambda x: new_graph.node[x]['color'] == move, new_graph.neighbors(self.head_node))
         gained_blocks = frozenset(block for child in affected_children for block in new_graph.node[child]['blocks'])
         inherited_children = set(y for x in affected_children for y in new_graph.neighbors(x))
         inherited_children.remove(self.head_node)
 
+        # Apply the effects to the new graph.
         new_graph.remove_nodes_from(affected_children)
         for child in inherited_children:
             new_graph.add_edge(self.head_node, child)
         new_graph.node[self.head_node]['color'] = move
         new_graph.node[self.head_node]['blocks'] = gained_blocks.union(new_graph.node[self.head_node]['blocks'])
+
+        # Create and return the new state.
         return self.__class__(self.width, self.height, self.num_colors, last_move=move, parent=self,
                               num_moves=self.num_moves + 1, head_node=self.head_node, initial_graph=new_graph)
 
     def is_goal(self):
+        """
+        :return: Whether or not the current state is a goal state.
+        """
         return self.graph.number_of_nodes() == 1
 
     def valid_actions(self):
+        """
+        :return: The set of all valid moves that can be applied to the current state. Can be of size 0 to num_colors.
+        """
         return set(self.graph.node[x]['color'] for x in self.graph.neighbors(self.head_node))
 
-    def draw_graph(self):
+    def draw_grid(self):
+        """
+        Displays the graph using matplotlib.
+        Only supports drawing states of 1 to 6 colors.
+        """
         plt.imshow(py.array(
             map(lambda x: map(lambda y: mplc.colorConverter.to_rgb(colord[y]), x), self.create_grid(self.graph))),
-                   interpolation='nearest')
+            interpolation='nearest')
         plt.show()
 
     def write_graph_to_file(self, path):
+        """
+        Outputs the graph representation as a json file to path.
+        This json file can then be displayed using graph drawing tools like D3.js
+        :param path: The location to output the file to.
+        """
         graph = nx.Graph()
         for node in self.graph.nodes(data=True):
             new_node = deepcopy(node)
@@ -149,15 +191,26 @@ class _State:
         json.dump(json_graph.node_link_data(graph), open(path, 'w'))
 
     def h_score(self):
+        """
+        Lazily evaluates the heuristic value of a state.
+        Will always underestimate the number of moves.
+        :return: The estimated number of moves remaining until the goal state.
+        """
         if self.estimated_moves_to_goal is None:
             self.estimated_moves_to_goal = \
                 max(nx.single_source_shortest_path_length(self.graph, self.head_node).items(), key=lambda x: x[1])[1]
         return self.estimated_moves_to_goal
 
     def g_score(self):
+        """
+        :return: The cost of getting to the current state.
+        """
         return self.num_moves
 
     def f_score(self):
+        """
+        :return: The value used for heuristic search.
+        """
         return self.g_score() + self.h_score()
 
     def __hash__(self):
@@ -180,6 +233,26 @@ class _State:
 class RedundantCheckingState(_State):
     def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, head_node=None,
                  initial_values=None, initial_graph=None):
+        """
+        This state is different from State in that states with user nodes that have the same blocks absorbed are
+        considered the same.
+        For example:
+        2 1 2 2
+        2 2 1 2
+        2 2 1 0
+        1 0 2 1
+
+        is the same as:
+        0 1 2 2
+        0 0 1 2
+        0 0 1 0
+        1 0 2 1
+
+        because the user node contains the same blocks.
+
+        This is the preferred state to use because it is significantly faster and more memory efficient than State.
+        It does not produce easy to read search graphs though.
+        """
         _State.__init__(self, width, height, num_colors, last_move, parent, num_moves, head_node, initial_values,
                         initial_graph)
         self.id = hash(self.graph.node[self.head_node]['blocks'])
@@ -189,6 +262,12 @@ class State(_State):
     def __init__(self, width, height, num_colors, last_move=None, parent=None, num_moves=0, head_node=None,
                  initial_values=None,
                  initial_graph=None):
+        """
+        This state is different from RedundantCheckingState in that no two separately generated states are the same.
+
+        This is here merely for debugging as it produces very easy to see search trees but is significantly slower and
+        uses more memory.
+        """
         _State.__init__(self, width, height, num_colors, last_move, parent, num_moves, head_node, initial_values,
                         initial_graph)
         self.id = rand.getrandbits(64)
